@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pepper Log Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      background: #fff;
+      color: #000;
+      display: flex;
+      height: 100vh;
+    }
+
+    /* Sidebar */
+    #sidebar {
+      width: 280px;
+      min-width: 280px;
+      border-right: 1px solid #000;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #sidebar-header {
+      padding: 12px;
+      border-bottom: 1px solid #000;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    #log-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .log-item {
+      padding: 8px 12px;
+      border-bottom: 1px solid #ccc;
+      cursor: pointer;
+      word-break: break-all;
+      font-size: 11px;
+    }
+
+    .log-item:hover {
+      background: #eee;
+    }
+
+    .log-item.active {
+      background: #000;
+      color: #fff;
+    }
+
+    .log-item .log-time {
+      font-size: 10px;
+      color: #666;
+    }
+
+    .log-item.active .log-time {
+      color: #aaa;
+    }
+
+    .log-item .log-prompt {
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Main content */
+    #main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #main-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #000;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    #main-header .tab {
+      padding: 4px 12px;
+      border: 1px solid #000;
+      cursor: pointer;
+      background: #fff;
+    }
+
+    #main-header .tab.active {
+      background: #000;
+      color: #fff;
+    }
+
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    #empty-state {
+      color: #999;
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    /* Log meta */
+    .meta-section {
+      border: 1px solid #000;
+      margin-bottom: 16px;
+      padding: 12px;
+    }
+
+    .meta-section h3 {
+      font-size: 13px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .meta-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    .meta-label {
+      font-weight: bold;
+      min-width: 140px;
+    }
+
+    .meta-value {
+      word-break: break-all;
+    }
+
+    /* Event entries */
+    .event-entry {
+      border: 1px solid #ccc;
+      margin-bottom: 8px;
+    }
+
+    .event-header {
+      padding: 6px 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+    }
+
+    .event-header:hover {
+      background: #f5f5f5;
+    }
+
+    .event-type {
+      font-weight: bold;
+      min-width: 120px;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+
+    .event-type.phase { border-left: 4px solid #000; padding-left: 6px; }
+    .event-type.tool_use { border-left: 4px solid #666; padding-left: 6px; }
+    .event-type.tool_result { border-left: 4px solid #999; padding-left: 6px; }
+    .event-type.assistant_text { border-left: 4px solid #bbb; padding-left: 6px; }
+    .event-type.cost { border-left: 4px solid #ddd; padding-left: 6px; }
+    .event-type.warning { border-left: 4px solid #000; padding-left: 6px; font-style: italic; }
+
+    .event-summary {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 12px;
+    }
+
+    .event-model {
+      font-size: 10px;
+      color: #666;
+      min-width: 30px;
+    }
+
+    .event-body {
+      display: none;
+      padding: 10px;
+      border-top: 1px solid #ccc;
+      background: #fafafa;
+    }
+
+    .event-body.open {
+      display: block;
+    }
+
+    .event-body pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    /* Full events tab */
+    .full-event-entry {
+      border: 1px solid #ccc;
+      margin-bottom: 6px;
+    }
+
+    .full-event-header {
+      padding: 6px 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .full-event-header:hover {
+      background: #f5f5f5;
+    }
+
+    .full-event-type {
+      font-weight: bold;
+      min-width: 80px;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+
+    .full-event-subtype {
+      min-width: 80px;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .full-event-summary {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .full-event-body {
+      display: none;
+      padding: 10px;
+      border-top: 1px solid #ccc;
+      background: #fafafa;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .full-event-body.open {
+      display: block;
+    }
+
+    .full-event-body pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    /* Phase separator */
+    .phase-separator {
+      background: #000;
+      color: #fff;
+      padding: 6px 12px;
+      margin: 12px 0 8px 0;
+      font-weight: bold;
+      font-size: 12px;
+      letter-spacing: 1px;
+    }
+
+    /* Response section */
+    .response-section {
+      border: 1px solid #000;
+      margin-top: 16px;
+      padding: 12px;
+    }
+
+    .response-section h3 {
+      font-size: 13px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .response-section pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+
+    /* Context passed section */
+    .context-section {
+      border: 1px solid #000;
+      margin-bottom: 12px;
+      padding: 10px;
+    }
+
+    .context-section h4 {
+      font-size: 12px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 4px;
+    }
+
+    .context-section pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 11px;
+      line-height: 1.4;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f0f0f0; }
+    ::-webkit-scrollbar-thumb { background: #999; }
+
+    /* Message input */
+    #msg-bar {
+      border-top: 1px solid #000;
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    #msg-input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid #000;
+      outline: none;
+    }
+
+    #msg-send {
+      padding: 6px 16px;
+      font-family: inherit;
+      font-size: 13px;
+      border: 1px solid #000;
+      background: #000;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    #msg-send:disabled {
+      background: #999;
+      border-color: #999;
+      cursor: default;
+    }
+
+    #msg-status {
+      padding: 4px 12px;
+      font-size: 11px;
+      color: #666;
+      border-top: 1px solid #eee;
+      flex-shrink: 0;
+      display: none;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    #msg-status.visible { display: block; }
+    #msg-status.error { color: #c00; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <div id="sidebar-header">PEPPER LOGS</div>
+    <div id="log-list"></div>
+  </div>
+  <div id="main">
+    <div id="main-header">
+      <div class="tab active" data-tab="pipeline" onclick="switchTab('pipeline')">Pipeline Events</div>
+      <div class="tab" data-tab="full" onclick="switchTab('full')">Full Events (Raw)</div>
+      <div class="tab" data-tab="context" onclick="switchTab('context')">Context Flow</div>
+    </div>
+    <div id="content">
+      <div id="empty-state">Select a log file from the sidebar</div>
+    </div>
+    <div id="msg-status"></div>
+    <div id="msg-bar">
+      <input id="msg-input" type="text" placeholder="Send a message..." autocomplete="off">
+      <button id="msg-send">Send</button>
+    </div>
+  </div>
+
+  <script>
+    let currentLog = null;
+    let currentTab = 'pipeline';
+    let logFiles = [];
+
+    async function loadLogList() {
+      const res = await fetch('/api/logs');
+      logFiles = await res.json();
+      renderLogList();
+    }
+
+    function renderLogList() {
+      const list = document.getElementById('log-list');
+      list.innerHTML = '';
+      for (const filename of logFiles) {
+        const div = document.createElement('div');
+        div.className = 'log-item';
+        div.dataset.filename = filename;
+
+        // Parse filename for display
+        let displayTime = filename;
+        let displayName = '';
+        // Format: 2026-02-22T23-41-22-416Z_Adam.json or 2047_Adam.json
+        const match = filename.match(/^(\d{4}-\d{2}-\d{2}T[\d-]+Z)_(.+)\.json$/) ||
+                      filename.match(/^(\d+)_(.+)\.json$/);
+        if (match) {
+          displayTime = match[1].replace(/T/, ' ').replace(/-/g, (m, offset) => offset > 9 ? ':' : '-').slice(0, 19);
+          displayName = match[2];
+        }
+
+        div.innerHTML = `<div class="log-time">${displayTime}</div><div class="log-prompt">${displayName}</div>`;
+        div.onclick = () => loadLog(filename);
+        list.appendChild(div);
+      }
+    }
+
+    async function loadLog(filename) {
+      liveMode = false; // exit live mode when viewing a saved log
+      // Highlight active
+      document.querySelectorAll('.log-item').forEach(el => el.classList.remove('active'));
+      const item = document.querySelector(`.log-item[data-filename="${filename}"]`);
+      if (item) item.classList.add('active');
+
+      const res = await fetch(`/api/logs/${filename}`);
+      currentLog = await res.json();
+      renderContent();
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+      renderContent();
+    }
+
+    function renderContent() {
+      const el = document.getElementById('content');
+      if (!currentLog) {
+        el.innerHTML = '<div id="empty-state">Select a log file from the sidebar</div>';
+        return;
+      }
+
+      if (currentTab === 'pipeline') {
+        renderPipelineEvents(el);
+      } else if (currentTab === 'full') {
+        renderFullEvents(el);
+      } else if (currentTab === 'context') {
+        renderContextFlow(el);
+      }
+    }
+
+    function esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function truncate(str, len) {
+      if (!str) return '';
+      str = String(str);
+      return str.length > len ? str.slice(0, len) + '...' : str;
+    }
+
+    function toggleBody(el) {
+      const body = el.parentElement.querySelector('.event-body, .full-event-body');
+      if (body) body.classList.toggle('open');
+    }
+
+    function renderMeta(log) {
+      return `
+        <div class="meta-section">
+          <h3>Request</h3>
+          <div class="meta-row"><span class="meta-label">Sender:</span><span class="meta-value">${esc(log.sender || '?')}</span></div>
+          <div class="meta-row"><span class="meta-label">Timestamp:</span><span class="meta-value">${esc(log.timestamp || '?')}</span></div>
+          <div class="meta-row"><span class="meta-label">Prompt:</span><span class="meta-value">${esc(log.prompt || '?')}</span></div>
+          <div class="meta-row"><span class="meta-label">Conversation #:</span><span class="meta-value">${log.conversationNumber ?? 'none'}</span></div>
+          <div class="meta-row"><span class="meta-label">Resume Session:</span><span class="meta-value">${esc(log.resumeSessionId || 'none')}</span></div>
+          <div class="meta-row"><span class="meta-label">Session ID:</span><span class="meta-value">${esc(log.sessionId || 'none')}</span></div>
+        </div>
+      `;
+    }
+
+    function renderPipelineEvents(el) {
+      const events = currentLog.events || [];
+      let html = renderMeta(currentLog);
+
+      let currentPhase = null;
+      for (const ev of events) {
+        // Skip empty assistant_text
+        if (ev.type === 'assistant_text' && !ev.text?.trim()) continue;
+
+        if (ev.type === 'pipeline_phase' && ev.phase !== currentPhase) {
+          currentPhase = ev.phase;
+          html += `<div class="phase-separator">PHASE ${esc(ev.phase)}: ${esc(ev.description || '')}</div>`;
+          continue;
+        }
+
+        const typeClass = ev.type === 'pipeline_phase' ? 'phase' :
+                         ev.type === 'tool_use' ? 'tool_use' :
+                         ev.type === 'tool_result' ? 'tool_result' :
+                         ev.type === 'assistant_text' ? 'assistant_text' :
+                         ev.type === 'cost' ? 'cost' :
+                         ev.type === 'warning' ? 'warning' : '';
+
+        let summary = '';
+        let bodyContent = '';
+
+        switch (ev.type) {
+          case 'pipeline_phase':
+            summary = esc(ev.description || '');
+            bodyContent = JSON.stringify(ev, null, 2);
+            break;
+          case 'tool_use':
+            summary = `${esc(ev.tool || ev.name || '?')} ${esc(truncate(JSON.stringify(ev.input || {}), 120))}`;
+            bodyContent = JSON.stringify(ev.input || {}, null, 2);
+            break;
+          case 'tool_result':
+            summary = `${esc(ev.tool || '?')} ${esc(truncate(String(ev.output || ''), 120))}`;
+            bodyContent = typeof ev.output === 'string' ? ev.output : JSON.stringify(ev.output || {}, null, 2);
+            break;
+          case 'assistant_text':
+            summary = esc(truncate(ev.text || '', 150));
+            bodyContent = ev.text || '';
+            break;
+          case 'cost':
+            summary = `$${(ev.cost ?? 0).toFixed(4)} | ${ev.duration || '?'}ms | in:${ev.input_tokens ?? '?'} out:${ev.output_tokens ?? '?'}${ev.cache_read ? ` cache:${ev.cache_read}` : ''}`;
+            bodyContent = JSON.stringify(ev, null, 2);
+            break;
+          case 'warning':
+            summary = esc(ev.message || '');
+            bodyContent = JSON.stringify(ev, null, 2);
+            break;
+          case 'tool_install':
+            summary = esc(ev.message || '');
+            bodyContent = JSON.stringify(ev, null, 2);
+            break;
+          default:
+            summary = esc(truncate(JSON.stringify(ev), 150));
+            bodyContent = JSON.stringify(ev, null, 2);
+        }
+
+        html += `
+          <div class="event-entry">
+            <div class="event-header" onclick="toggleBody(this)">
+              <span class="event-type ${typeClass}">${esc(ev.type)}</span>
+              <span class="event-summary">${summary}</span>
+              <span class="event-model">${esc(ev.model || '')}</span>
+            </div>
+            <div class="event-body"><pre>${esc(bodyContent)}</pre></div>
+          </div>
+        `;
+      }
+
+      // Final response
+      if (currentLog.response) {
+        html += `
+          <div class="response-section">
+            <h3>Final Response</h3>
+            <pre>${esc(currentLog.response)}</pre>
+          </div>
+        `;
+      }
+
+      el.innerHTML = html;
+    }
+
+    function renderFullEvents(el) {
+      const events = currentLog.fullEvents || [];
+      if (!events.length) {
+        el.innerHTML = renderMeta(currentLog) + '<div style="color:#999;padding:20px;">No fullEvents in this log file.</div>';
+        return;
+      }
+
+      let html = renderMeta(currentLog);
+
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        let summary = '';
+        let subtype = ev.subtype || '';
+
+        switch (ev.type) {
+          case 'system':
+            summary = ev.session_id ? `session: ${ev.session_id}` : '';
+            if (ev.tools) summary += ` | ${ev.tools.length} tools`;
+            break;
+          case 'assistant':
+            if (ev.subtype === 'tool_use') {
+              summary = `${ev.tool_name || '?'}`;
+              subtype = 'tool_use';
+            } else if (ev.message) {
+              const content = ev.message.content || [];
+              // Check if this message contains tool_use blocks
+              const toolUses = content.filter(c => c.type === 'tool_use');
+              const textBlocks = content.filter(c => c.type === 'text');
+              const thinkingBlocks = content.filter(c => c.type === 'thinking');
+
+              if (toolUses.length > 0) {
+                subtype = 'tool_use';
+                summary = toolUses.map(c => c.name).join(', ');
+              } else {
+                const parts = content.map(c => {
+                  if (c.type === 'thinking') return `[thinking: ${truncate(c.thinking, 80)}]`;
+                  if (c.type === 'text') return truncate(c.text, 100);
+                  return `[${c.type}]`;
+                });
+                summary = parts.join(' | ');
+              }
+            }
+            break;
+          case 'user':
+            if (ev.subtype === 'tool_result') {
+              summary = `${ev.tool_name || '?'}: ${truncate(String(ev.output || ''), 100)}`;
+              subtype = 'tool_result';
+            } else if (ev.message) {
+              const content = ev.message.content || [];
+              const toolResults = content.filter(c => c.type === 'tool_result');
+              if (toolResults.length > 0) {
+                subtype = 'tool_result';
+                summary = toolResults.map(c => truncate(String(c.content || ''), 80)).join(' | ');
+              }
+            }
+            break;
+          case 'result':
+            summary = `${ev.subtype || 'done'} | $${(ev.total_cost_usd ?? 0).toFixed(4)}`;
+            break;
+          case 'rate_limit_event':
+            summary = `${ev.message || ''}`;
+            break;
+          default:
+            summary = truncate(JSON.stringify(ev), 150);
+        }
+
+        const bodyContent = JSON.stringify(ev, null, 2);
+
+        html += `
+          <div class="full-event-entry">
+            <div class="full-event-header" onclick="toggleBody(this)">
+              <span class="full-event-type">${esc(ev.type)}</span>
+              <span class="full-event-subtype">${esc(subtype)}</span>
+              <span class="full-event-summary">${esc(summary)}</span>
+            </div>
+            <div class="full-event-body"><pre>${esc(bodyContent)}</pre></div>
+          </div>
+        `;
+      }
+
+      el.innerHTML = html;
+    }
+
+    function renderContextFlow(el) {
+      const events = currentLog.events || [];
+      const fullEvents = currentLog.fullEvents || [];
+
+      let html = renderMeta(currentLog);
+
+      html += '<div class="phase-separator">CONTEXT FLOW BETWEEN PHASES</div>';
+
+      // Extract phase transitions and what data flows between them
+      let phases = [];
+      let currentPhaseEvents = [];
+      let currentPhaseName = null;
+
+      for (const ev of events) {
+        if (ev.type === 'pipeline_phase' && ev.phase !== currentPhaseName) {
+          if (currentPhaseName !== null) {
+            phases.push({ phase: currentPhaseName, events: currentPhaseEvents });
+          }
+          currentPhaseName = ev.phase;
+          currentPhaseEvents = [ev];
+        } else {
+          currentPhaseEvents.push(ev);
+        }
+      }
+      if (currentPhaseName !== null) {
+        phases.push({ phase: currentPhaseName, events: currentPhaseEvents });
+      }
+
+      for (const phase of phases) {
+        html += `<div class="context-section">
+          <h4>Phase ${esc(phase.phase)}</h4>`;
+
+        // Show phase descriptions (what was decided)
+        const descs = phase.events.filter(e => e.type === 'pipeline_phase').map(e => e.description);
+        if (descs.length) {
+          html += `<div style="margin-bottom:8px;"><strong>Decisions:</strong></div>`;
+          for (const d of descs) {
+            html += `<div style="margin-left:12px;margin-bottom:4px;">${esc(d)}</div>`;
+          }
+        }
+
+        // Show tool calls in this phase
+        const tools = phase.events.filter(e => e.type === 'tool_use');
+        if (tools.length) {
+          html += `<div style="margin-top:8px;margin-bottom:4px;"><strong>Tool Calls (${tools.length}):</strong></div>`;
+          for (const t of tools) {
+            html += `<div style="margin-left:12px;margin-bottom:6px;border:1px solid #ccc;padding:6px;">
+              <div><strong>${esc(t.tool || t.name || '?')}</strong></div>
+              <pre style="font-size:11px;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(t.input || {}, null, 2))}</pre>
+            </div>`;
+          }
+        }
+
+        // Show tool results in this phase
+        const results = phase.events.filter(e => e.type === 'tool_result');
+        if (results.length) {
+          html += `<div style="margin-top:8px;margin-bottom:4px;"><strong>Tool Results (${results.length}):</strong></div>`;
+          for (const r of results) {
+            const output = typeof r.output === 'string' ? r.output : JSON.stringify(r.output || {}, null, 2);
+            html += `<div style="margin-left:12px;margin-bottom:6px;border:1px solid #ccc;padding:6px;">
+              <div><strong>${esc(r.tool || '?')}</strong></div>
+              <pre style="font-size:11px;max-height:200px;overflow-y:auto;">${esc(truncate(output, 2000))}</pre>
+            </div>`;
+          }
+        }
+
+        // Show assistant text outputs (the context passed forward)
+        const texts = phase.events.filter(e => e.type === 'assistant_text' && e.text?.trim());
+        if (texts.length) {
+          html += `<div style="margin-top:8px;margin-bottom:4px;"><strong>Output Text:</strong></div>`;
+          const combined = texts.map(t => t.text).join('\n');
+          html += `<pre style="margin-left:12px;font-size:11px;max-height:300px;overflow-y:auto;">${esc(truncate(combined, 3000))}</pre>`;
+        }
+
+        // Show cost if present
+        const costs = phase.events.filter(e => e.type === 'cost');
+        if (costs.length) {
+          for (const c of costs) {
+            html += `<div style="margin-top:6px;color:#666;">Cost: $${(c.cost ?? 0).toFixed(4)} | ${c.duration || '?'}ms | in:${c.input_tokens ?? '?'} out:${c.output_tokens ?? '?'}${c.cache_read ? ` cache:${c.cache_read}` : ''}</div>`;
+          }
+        }
+
+        html += `</div>`;
+      }
+
+      // Show init data from fullEvents if available
+      const initEvent = fullEvents.find(e => e.type === 'system' && e.subtype === 'init');
+      if (initEvent) {
+        html += `<div class="context-section">
+          <h4>Init Context (from Claude CLI)</h4>
+          <pre>${esc(JSON.stringify({
+            cwd: initEvent.cwd,
+            session_id: initEvent.session_id,
+            tools: initEvent.tools,
+            model: initEvent.model,
+            mcp_servers: initEvent.mcp_servers,
+          }, null, 2))}</pre>
+        </div>`;
+      }
+
+      // Final response
+      if (currentLog.response) {
+        html += `
+          <div class="response-section">
+            <h3>Final Response (sent to user)</h3>
+            <pre>${esc(currentLog.response)}</pre>
+          </div>
+        `;
+      }
+
+      el.innerHTML = html;
+    }
+
+    // SSE for live updates
+    function connectSSE() {
+      const evtSource = new EventSource('/api/watch');
+      evtSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'new_log') {
+            logFiles.unshift(data.filename);
+            renderLogList();
+          }
+        } catch {}
+      };
+      evtSource.onerror = () => {
+        setTimeout(connectSSE, 5000);
+      };
+    }
+
+    // ── Live log streaming + message input (connects to main backend via Socket.IO) ──
+    let pepperSocket = null;
+    let msgSending = false;
+    let liveMode = false;
+    let livePhase = null;
+
+    function enterLiveMode(prompt) {
+      liveMode = true;
+      livePhase = null;
+      currentLog = null;
+      document.querySelectorAll('.log-item').forEach(el => el.classList.remove('active'));
+      const content = document.getElementById('content');
+      content.innerHTML = '<div class="phase-separator">LIVE</div>';
+      if (prompt) {
+        content.innerHTML += `<div class="meta-section"><h3>Request</h3><div class="meta-row"><span class="meta-label">Prompt:</span><span class="meta-value">${esc(prompt)}</span></div></div>`;
+      }
+    }
+
+    function appendLiveEvent(ev) {
+      if (!liveMode) return;
+      const content = document.getElementById('content');
+      const d = ev.data || {};
+      const type = ev.type;
+
+      // Phase separator
+      if (type === 'pipeline_phase' && d.phase !== livePhase) {
+        livePhase = d.phase;
+        const sep = document.createElement('div');
+        sep.className = 'phase-separator';
+        sep.textContent = 'PHASE ' + (d.phase || '?') + ': ' + (d.description || '');
+        content.appendChild(sep);
+        content.scrollTop = content.scrollHeight;
+        return;
+      }
+
+      // Skip empty assistant text
+      if (type === 'assistant_text' && !d.text?.trim()) return;
+      // Skip incoming (we already show the prompt)
+      if (type === 'incoming') return;
+
+      const typeClass = type === 'pipeline_phase' ? 'phase' :
+                       type === 'tool_use' ? 'tool_use' :
+                       type === 'tool_result' ? 'tool_result' :
+                       type === 'assistant_text' ? 'assistant_text' :
+                       type === 'cost' ? 'cost' :
+                       type === 'warning' ? 'warning' : '';
+
+      let summary = '';
+      let bodyContent = '';
+
+      switch (type) {
+        case 'pipeline_phase':
+          summary = esc(d.description || '');
+          bodyContent = JSON.stringify(d, null, 2);
+          break;
+        case 'tool_use':
+          summary = esc(d.tool || d.name || '?') + ' ' + esc(truncate(JSON.stringify(d.input || {}), 120));
+          bodyContent = JSON.stringify(d.input || {}, null, 2);
+          break;
+        case 'tool_result':
+          summary = esc(d.tool || '?') + ' ' + esc(truncate(String(d.output || ''), 120));
+          bodyContent = typeof d.output === 'string' ? d.output : JSON.stringify(d.output || {}, null, 2);
+          break;
+        case 'assistant_text':
+          summary = esc(truncate(d.text || '', 150));
+          bodyContent = d.text || '';
+          break;
+        case 'cost':
+          summary = '$' + (d.cost ?? 0).toFixed(4) + ' | ' + (d.duration || '?') + 'ms | in:' + (d.input_tokens ?? '?') + ' out:' + (d.output_tokens ?? '?') + (d.cache_read ? ' cache:' + d.cache_read : '');
+          bodyContent = JSON.stringify(d, null, 2);
+          break;
+        case 'warning':
+          summary = esc(d.message || '');
+          bodyContent = JSON.stringify(d, null, 2);
+          break;
+        default:
+          summary = esc(truncate(JSON.stringify(d), 150));
+          bodyContent = JSON.stringify(d, null, 2);
+      }
+
+      const entry = document.createElement('div');
+      entry.className = 'event-entry';
+      entry.innerHTML = `
+        <div class="event-header" onclick="toggleBody(this)">
+          <span class="event-type ${typeClass}">${esc(type)}</span>
+          <span class="event-summary">${summary}</span>
+          <span class="event-model">${esc(d.model || '')}</span>
+        </div>
+        <div class="event-body"><pre>${esc(bodyContent)}</pre></div>
+      `;
+      content.appendChild(entry);
+      content.scrollTop = content.scrollHeight;
+    }
+
+    function connectPepper() {
+      const script = document.createElement('script');
+      script.src = 'http://localhost:3457/socket.io/socket.io.js';
+      script.onload = () => {
+        pepperSocket = io('http://localhost:3457');
+        pepperSocket.on('connect', () => setMsgStatus('Connected to Pepper', false));
+        pepperSocket.on('disconnect', () => setMsgStatus('Disconnected from Pepper', true));
+
+        // Live event stream — shows all events from all sources
+        pepperSocket.on('log', (ev) => {
+          // Auto-enter live mode when any new request starts
+          if (ev.type === 'incoming' && !msgSending) {
+            enterLiveMode(ev.data?.prompt || '');
+          }
+          appendLiveEvent(ev);
+        });
+
+        pepperSocket.on('chat_response', (data) => {
+          msgSending = false;
+          document.getElementById('msg-send').disabled = false;
+          if (liveMode) {
+            const text = typeof data === 'string' ? data : data.response || '';
+            if (text) {
+              const content = document.getElementById('content');
+              const resp = document.createElement('div');
+              resp.className = 'response-section';
+              resp.innerHTML = '<h3>Final Response</h3><pre>' + esc(text) + '</pre>';
+              content.appendChild(resp);
+              content.scrollTop = content.scrollHeight;
+            }
+          }
+          setMsgStatus('Done', false);
+          loadLogList();
+        });
+
+        pepperSocket.on('chat_error', (data) => {
+          msgSending = false;
+          document.getElementById('msg-send').disabled = false;
+          setMsgStatus('Error: ' + (typeof data === 'string' ? data : data.error || JSON.stringify(data)), true);
+        });
+
+        pepperSocket.on('chat_questions', (data) => {
+          msgSending = false;
+          document.getElementById('msg-send').disabled = false;
+          const qs = data.questions?.questions || [];
+          const text = qs.map(q => q.question).join('\n') || 'Agent has a question';
+          setMsgStatus('Question: ' + text, false);
+        });
+      };
+      script.onerror = () => setMsgStatus('Cannot reach Pepper backend (localhost:3457)', true);
+      document.head.appendChild(script);
+    }
+
+    function setMsgStatus(text, isError) {
+      const el = document.getElementById('msg-status');
+      el.textContent = text;
+      el.className = 'visible' + (isError ? ' error' : '');
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('msg-input');
+      const text = input.value.trim();
+      if (!text || !pepperSocket?.connected) return;
+      msgSending = true;
+      document.getElementById('msg-send').disabled = true;
+      enterLiveMode(text);
+      setMsgStatus('Sending...', false);
+      pepperSocket.emit('web_message', text);
+      input.value = '';
+    }
+
+    document.getElementById('msg-send').addEventListener('click', sendMessage);
+    document.getElementById('msg-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    // Init
+    loadLogList();
+    connectSSE();
+    connectPepper();
+  </script>
+</body>
+</html>

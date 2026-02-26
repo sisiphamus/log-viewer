@@ -1,0 +1,12 @@
+{
+  "name": "pepper-log-viewer",
+  "version": "1.0.0",
+  "description": "Black and white log viewer for Pepper pipeline",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
